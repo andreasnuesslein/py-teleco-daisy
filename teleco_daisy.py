@@ -61,31 +61,65 @@ class DaisyCover(DaisyDevice):
         stati = super().update_state()
         for status in stati:
             if status.statusitemCode == "OPEN_CLOSE":
-                self.is_closed = status.statusValue == "CLOSE"
+                if status.statusValue == "CLOSE":
+                    self.is_closed = True
+                elif status.statusValue == "OPEN":
+                    self.is_closed = False
+                else:
+                    self.is_closed = None
             if status.statusitemCode == "LEVEL":
                 self.position = int(status.statusValue)
 
-    def open_cover(self, percent: Literal["33", "66", "100"] = "100"):
-        percent_map = {"33": "CH2", "66": "CH3", "100": "CH4"}
-        self._control_cover(percent_map[percent])
-
-    def close_cover(self):
-        self._control_cover("CH1")
+    def open_cover(self, percent: Literal["33", "66", "100"] = None):
+        if percent == "100":
+            return self._open_stop_close("open")
+        self._control_cover(percent)
 
     def stop_cover(self):
-        self._control_cover("CH7")
+        self._open_stop_close("stop")
 
-    def _control_cover(self, level: Literal["CH1", "CH2", "CH3", "CH4", "CH7"]):
+    def close_cover(self):
+        self._open_stop_close("close")
+
+    def _open_stop_close(self, open_stop_close: Literal["open", "stop", "close"]):
+        osc_map = {
+            "open": ["OPEN", 94, "CH4"],
+            "stop": ["STOP", 95, "CH7"],
+            "close": ["CLOSE", 96, "CH1"],
+        }
+        c_param, c_id, c_ll = osc_map[open_stop_close]
         return self.client.feed_the_commands(
             installation=self.installation,
             commandsList=[
                 {
-                    "deviceCode": str(
-                        self.deviceIndex
-                    ),  # Note: was "2", deviceIndex might be wrong
+                    "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
-                    # "commandAction": "LEVEL",
-                    "lowlevelCommand": level,
+                    "commandAction": "OPEN_STOP_CLOSE",
+                    "commandId": c_id,
+                    "commandParam": c_param,
+                    "lowlevelCommand": c_ll,
+                }
+            ],
+        )
+
+    def _control_cover(self, percent: Literal["33", "66", "100"]):
+        percent_map = {
+            "33": ["LEV2", 97, "CH2"],
+            "66": ["LEV3", 98, "CH3"],
+            "100": ["LEV4", 99, "CH4"],
+        }
+        c_param, c_id, c_ll = percent_map[percent]
+
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                    "commandAction": "LEVEL",
+                    "commandId": c_id,
+                    "commandParam": c_param,
+                    "lowlevelCommand": c_ll,
                 }
             ],
         )
@@ -126,9 +160,7 @@ class DaisyLight(DaisyDevice):
                     "commandAction": "COLOR",
                     "commandId": 137,
                     "commandParam": v,
-                    "deviceCode": str(
-                        self.deviceIndex
-                    ),  # Note: was "3", deviceIndex might be wrong
+                    "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                 }
             ],
@@ -142,9 +174,7 @@ class DaisyLight(DaisyDevice):
                     "commandAction": "POWER",
                     "commandId": 138,
                     "commandParam": "OFF",
-                    "deviceCode": str(
-                        self.deviceIndex
-                    ),  # Note: was "3", deviceIndex might be wrong
+                    "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                 }
             ],
@@ -213,11 +243,11 @@ class TelecoDaisy:
         for room in req_json["valRisultato"]["roomList"]:
             devices = []
             for device in room.pop("deviceList"):
-                if device["idDeviceType"] == 23:
+                if device["idDevicetype"] == 23:
                     devices += [
                         DaisyLight(**device, client=self, installation=installation)
                     ]
-                elif device["idDeviceType"] == 24:
+                elif device["idDevicetype"] == 24:
                     devices += [
                         DaisyCover(**device, client=self, installation=installation)
                     ]
