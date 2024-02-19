@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from time import sleep
 from typing import Literal
 
 import requests
@@ -29,6 +30,11 @@ class DaisyInstallation:
     longitude: float
     weekend: str  # list[str]
     workdays: str  # list[str]
+
+    client: "TelecoDaisy"
+
+    def status(self):
+        return self.client.get_installation_is_active(self)
 
 
 @dataclass
@@ -223,8 +229,19 @@ class TelecoDaisy:
 
         installations = []
         for inst in req_json["valRisultato"]["installationList"]:
-            installations += [DaisyInstallation(**inst)]
+            installations += [DaisyInstallation(**inst, client=self)]
         return installations
+
+    def get_installation_is_active(self, installation: DaisyInstallation):
+        req = self.s.post(
+            base_url + "teleco/services/tmate20/nodestatus",
+            json={
+                "idSession": self.idSession,
+                "idInstallation": installation.idInstallation,
+            },
+        )
+        req_json = req.json()
+        return req_json["nodeActive"]
 
     def get_room_list(self, installation: DaisyInstallation) -> list[DaisyRoom]:
         req = self.s.post(
@@ -273,7 +290,10 @@ class TelecoDaisy:
         return [DaisyStatus(**x) for x in req_json["valRisultato"]["statusitemList"]]
 
     def feed_the_commands(
-        self, installation: DaisyInstallation, commandsList: list[dict]
+        self,
+        installation: DaisyInstallation,
+        commandsList: list[dict],
+        ignore_ack=False,
     ):
         req = self.s.post(
             base_url + "teleco/services/tmate20/feedthecommands/",
@@ -286,6 +306,29 @@ class TelecoDaisy:
             },
         )
         req_json = req.json()
-        if req_json["MessageID"] == "WS-000":
-            return True
-        raise Exception(req_json)
+
+        if req_json["MessageID"] != "WS-000":
+            raise Exception(req_json)
+
+        if ignore_ack:
+            return {"success": None}
+
+        return self._get_ack(installation, req_json["ActionReference"])
+
+    def _get_ack(self, installation: DaisyInstallation, action_reference: str):
+        req = self.s.post(
+            base_url + "teleco/services/tmate20/getackcommand/",
+            json={
+                "id": action_reference,
+                "idInstallation": installation.instCode,
+                "idSession": self.idSession,
+            },
+        )
+        req_json = req.json()
+        assert req_json["MessageID"] == "WS-300"
+        if req_json["MessageText"] == "RCV":
+            sleep(0.5)
+            return self._get_ack(installation, action_reference)
+        if req_json["MessageText"] == "PROC":
+            return {"success": True}
+        return {"success": False}
