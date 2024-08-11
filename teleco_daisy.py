@@ -159,6 +159,14 @@ class DaisyLight(DaisyDevice):
             raise ValueError("Color must be between 0 and 255")
 
         v = f"A{brightness:03d}R{rgb[0]:03d}G{rgb[1]:03d}B{rgb[2]:03d}"
+
+        if(self.idDevicetype == 21):
+            commandId = 146
+            lowlevelCommand = "CH1"
+        elif(self.idDevicetype == 23):
+            commandId = 137
+            lowlevelCommand = None
+
         return self.client.feed_the_commands(
             installation=self.installation,
             commandsList=[
@@ -172,16 +180,48 @@ class DaisyLight(DaisyDevice):
             ],
         )
 
-    def turn_off(self):
+    def turn_on(self):
+
+        if (self.idDevicetype == 21):
+            commandId = 146
+            lowlevelCommand = "CH1"
+        elif(self.idDevicetype == 23):
+            commandId = 138 # maybe incorrect
+            lowlevelCommand = None
+
         return self.client.feed_the_commands(
             installation=self.installation,
             commandsList=[
                 {
                     "commandAction": "POWER",
-                    "commandId": 138,
+                    "commandId": commandId,
+                    "commandParam": "ON",
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                    "lowlevelCommand": lowlevelCommand,
+                }
+            ],
+        )
+
+    def turn_off(self):
+
+        if (self.idDevicetype == 21):
+            commandId = 147
+            lowlevelCommand = "CH8"
+        elif(self.idDevicetype == 23):
+            commandId = 138
+            lowlevelCommand = None
+
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "commandAction": "POWER",
+                    "commandId": commandId,
                     "commandParam": "OFF",
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
+                    "lowlevelCommand": lowlevelCommand,
                 }
             ],
         )
@@ -260,7 +300,10 @@ class TelecoDaisy:
         for room in req_json["valRisultato"]["roomList"]:
             devices = []
             for device in room.pop("deviceList"):
-                if device["idDevicetype"] == 23:
+
+                # 21 White LED light
+                # 23 RGB LED light
+                if device["idDevicetype"] in (21,23):
                     devices += [
                         DaisyLight(**device, client=self, installation=installation)
                     ]
@@ -306,7 +349,6 @@ class TelecoDaisy:
             },
         )
         req_json = req.json()
-
         if req_json["MessageID"] != "WS-000":
             raise Exception(req_json)
 
