@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from time import sleep
 from typing import Literal
@@ -88,11 +89,18 @@ class DaisyCover(DaisyDevice):
         self._open_stop_close("close")
 
     def _open_stop_close(self, open_stop_close: Literal["open", "stop", "close"]):
-        osc_map = {
-            "open": ["OPEN", 94, "CH4"],
-            "stop": ["STOP", 95, "CH7"],
-            "close": ["CLOSE", 96, "CH1"],
-        }
+        if self.idDevicetype == 22:
+            osc_map = {
+                "open": ["OPEN", 75, "CH5"],
+                "stop": ["STOP", 76, "CH7"],
+                "close": ["CLOSE", 77, "CH8"],
+            }
+        elif self.idDevicetype == 24:
+            osc_map = {
+                "open": ["OPEN", 94, "CH4"],
+                "stop": ["STOP", 95, "CH7"],
+                "close": ["CLOSE", 96, "CH1"],
+            }
         c_param, c_id, c_ll = osc_map[open_stop_close]
         return self.client.feed_the_commands(
             installation=self.installation,
@@ -307,7 +315,7 @@ class TelecoDaisy:
                     devices += [
                         DaisyLight(**device, client=self, installation=installation)
                     ]
-                elif device["idDevicetype"] == 24:
+                elif device["idDevicetype"] in (22, 24):
                     devices += [
                         DaisyCover(**device, client=self, installation=installation)
                     ]
