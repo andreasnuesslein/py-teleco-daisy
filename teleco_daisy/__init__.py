@@ -165,7 +165,7 @@ class DaisyCover(DaisyDevice):
 class DaisyAwningsCover(DaisyCover):
     idDevicetype: Literal[22]
 
-    osc_map = {
+    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
         "open": {"commandId": 75, "commandParam": "OPEN", "lowlevelCommand": "CH5"},
         "stop": {"commandId": 76, "commandParam": "STOP", "lowlevelCommand": "CH7"},
         "close": {"commandId": 77, "commandParam": "CLOSE", "lowlevelCommand": "CH8"},
@@ -175,7 +175,7 @@ class DaisyAwningsCover(DaisyCover):
 class DaisySlatsCover(DaisyCover):
     idDevicetype: Literal[24]
 
-    osc_map = {
+    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
         "open": {"commandId": 94, "commandParam": "OPEN", "lowlevelCommand": "CH4"},
         "stop": {"commandId": 95, "commandParam": "STOP", "lowlevelCommand": "CH7"},
         "close": {"commandId": 96, "commandParam": "CLOSE", "lowlevelCommand": "CH1"},
@@ -300,7 +300,7 @@ class DaisyWhiteLight(DaisyLight):
 
 
 DaisyDeviceUnion = Annotated[
-    DaisyCover | DaisyRGBLight | DaisyWhiteLight,
+    DaisyAwningsCover | DaisySlatsCover | DaisyWhiteLight | DaisyRGBLight,
     Field(discriminator="idDevicetype"),
 ]
 
