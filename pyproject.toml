@@ -1,12 +1,12 @@
 [project]
 name = "teleco-daisy"
-version = "0.1.1"
+version = "0.1.2"
 description = ""
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pydantic>=2.11.7",
-    "requests>=2.32.4",
+    "pydantic>=2",
+    "requests>=2.32.2",
 ]
 
 [dependency-groups]

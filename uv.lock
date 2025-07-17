@@ -285,7 +285,7 @@ wheels = [
 
 [[package]]
 name = "teleco-daisy"
-version = "0.1.0"
+version = "0.1.1"
 source = { virtual = "." }
 dependencies = [
     { name = "pydantic" },
@@ -300,8 +300,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pydantic", specifier = ">=2.11.7" },
-    { name = "requests", specifier = ">=2.32.4" },
+    { name = "pydantic", specifier = ">=2" },
+    { name = "requests", specifier = ">=2.32.2" },
 ]
 
 [package.metadata.requires-dev]
