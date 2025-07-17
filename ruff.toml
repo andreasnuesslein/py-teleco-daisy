@@ -1,0 +1,20 @@
+target-version = "py310"
+[lint]
+select = [
+    "B",
+    "C",
+    "E",
+    "W",
+    "F",
+    "FLY",
+    "I",
+    "N",
+    "S",
+    "PLC",
+    "RUF",
+    "UP",
+]
+ignore = [
+    "N8",
+]
+

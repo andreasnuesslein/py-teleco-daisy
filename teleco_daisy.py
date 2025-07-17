@@ -1,25 +1,24 @@
-import json
-from dataclasses import dataclass
 from time import sleep
-from typing import Literal
+from typing import Annotated, Any, Literal
 
 import requests
+from pydantic import BaseModel, ConfigDict, Field
 
 base_url = "https://tmate.telecoautomation.com/"
 
 
-@dataclass
-class DaisyStatus:
+class DaisyStatus(BaseModel):
+    """for /status-device-list"""
+
     idInstallationDeviceStatusitem: int
     idDevicetypeStatusitemModel: int
     statusitemCode: str
     statusItem: str
     statusValue: str
-    lowlevelStatusitem: None
+    lowlevelStatusitem: None | str = None
 
 
-@dataclass
-class DaisyInstallation:
+class DaisyInstallation(BaseModel):
     activetimer: str
     firmwareVersion: str
     idInstallation: int
@@ -32,19 +31,16 @@ class DaisyInstallation:
     weekend: str  # list[str]
     workdays: str  # list[str]
 
-    client: "TelecoDaisy"
-
-    def status(self):
-        return self.client.get_installation_is_active(self)
+    def __str__(self):
+        return f"DaisyInstallation fw{self.firmwareVersion}"
 
 
-@dataclass
-class DaisyDevice:
+class DaisyBaseDevice(BaseModel):
     activetimer: str
     deviceCode: str
     deviceIndex: int
     deviceOrder: int
-    directOnly: None
+    directOnly: str | None = None
     favorite: str
     feedback: str
     idDevicemodel: int
@@ -53,6 +49,10 @@ class DaisyDevice:
     label: str
     remoteControlCode: str
 
+
+class DaisyDevice(DaisyBaseDevice):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     client: "TelecoDaisy"
     installation: DaisyInstallation
 
@@ -60,27 +60,65 @@ class DaisyDevice:
         return self.client.status_device_list(self.installation, self)
 
 
+class DaisyDeviceWithCommands(DaisyBaseDevice):
+    class DeviceCommand(BaseModel):
+        commandAction: str
+        commandCode: str
+        commandParam: str
+        deviceIndex: int
+        idDevicetypeCommandModel: int
+        idInstallationDeviceCommand: int
+        lowlevelCommand: str
+
+    deviceCommandList: list[DeviceCommand]
+
+    def __str__(self):
+        return f'DaisyDevice "{self.label}" (type: {self.idDevicetype})'
+
+
+class DaisyBaseRoom(BaseModel):
+    idInstallationRoom: int
+    idRoomtype: int
+    roomDescription: str
+    roomOrder: int
+    deviceList: list[DaisyDevice]
+
+    def __str__(self):
+        return f'DaisyRoom "{self.roomDescription}"'
+
+
+class DaisyRoomWithCommands(DaisyBaseRoom):
+    deviceList: list[DaisyDeviceWithCommands]
+
+
 class DaisyCover(DaisyDevice):
     position: int | None = None
     is_closed: bool | None = None
+
+    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]]
+
+    def __str__(self):
+        return f'DaisyCover "{self.label}"'
 
     def update_state(self):
         stati = super().update_state()
         for status in stati:
             if status.statusitemCode == "OPEN_CLOSE":
-                if status.statusValue == "CLOSE":
-                    self.is_closed = True
-                elif status.statusValue == "OPEN":
-                    self.is_closed = False
-                else:
-                    self.is_closed = None
+                match status.statusValue:
+                    case "CLOSE":
+                        self.is_closed = True
+                    case "OPEN":
+                        self.is_closed = False
+                    case _:
+                        self.is_closed = None
             if status.statusitemCode == "LEVEL":
                 self.position = int(status.statusValue)
+        return stati
 
-    def open_cover(self, percent: Literal["33", "66", "100"] = None):
+    def open_cover(self, percent: Literal["33", "66", "100"] | None = None):
         if percent == "100":
             return self._open_stop_close("open")
-        self._control_cover(percent)
+        return self._control_cover(percent)
 
     def stop_cover(self):
         self._open_stop_close("stop")
@@ -89,19 +127,6 @@ class DaisyCover(DaisyDevice):
         self._open_stop_close("close")
 
     def _open_stop_close(self, open_stop_close: Literal["open", "stop", "close"]):
-        if self.idDevicetype == 22:
-            osc_map = {
-                "open": ["OPEN", 75, "CH5"],
-                "stop": ["STOP", 76, "CH7"],
-                "close": ["CLOSE", 77, "CH8"],
-            }
-        elif self.idDevicetype == 24:
-            osc_map = {
-                "open": ["OPEN", 94, "CH4"],
-                "stop": ["STOP", 95, "CH7"],
-                "close": ["CLOSE", 96, "CH1"],
-            }
-        c_param, c_id, c_ll = osc_map[open_stop_close]
         return self.client.feed_the_commands(
             installation=self.installation,
             commandsList=[
@@ -109,10 +134,8 @@ class DaisyCover(DaisyDevice):
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                     "commandAction": "OPEN_STOP_CLOSE",
-                    "commandId": c_id,
-                    "commandParam": c_param,
-                    "lowlevelCommand": c_ll,
                 }
+                | self.osc_map[open_stop_close]
             ],
         )
 
@@ -139,10 +162,33 @@ class DaisyCover(DaisyDevice):
         )
 
 
+class DaisyAwningsCover(DaisyCover):
+    idDevicetype: Literal[22]
+
+    osc_map = {
+        "open": {"commandId": 75, "commandParam": "OPEN", "lowlevelCommand": "CH5"},
+        "stop": {"commandId": 76, "commandParam": "STOP", "lowlevelCommand": "CH7"},
+        "close": {"commandId": 77, "commandParam": "CLOSE", "lowlevelCommand": "CH8"},
+    }
+
+
+class DaisySlatsCover(DaisyCover):
+    idDevicetype: Literal[24]
+
+    osc_map = {
+        "open": {"commandId": 94, "commandParam": "OPEN", "lowlevelCommand": "CH4"},
+        "stop": {"commandId": 95, "commandParam": "STOP", "lowlevelCommand": "CH7"},
+        "close": {"commandId": 96, "commandParam": "CLOSE", "lowlevelCommand": "CH1"},
+    }
+
+
 class DaisyLight(DaisyDevice):
     is_on: bool | None = None
     brightness: int | None = None  # from 0 to 100
     rgb: tuple[int, int, int] | None = None
+
+    def __str__(self):
+        return f'DaisyLight "{self.label}"'
 
     def update_state(self):
         stati = super().update_state()
@@ -153,10 +199,16 @@ class DaisyLight(DaisyDevice):
                 val = status.statusValue
                 self.brightness = int(val[1:4])
                 self.rgb = (int(val[5:8]), int(val[9:12]), int(val[13:16]))
+        return stati
 
-    def set_rgb_and_brightness(
-        self, rgb: tuple[int, int, int] = None, brightness: int = None
+    def _set_rgb_and_brightness(
+        self,
+        rgb: tuple[int, int, int] | None = None,
+        brightness: int | None = None,
+        specific_params: dict | None = None,
     ):
+        if specific_params is None:
+            specific_params = {}
         if brightness is None:
             brightness = self.brightness or 0
         if 0 > brightness or brightness > 100:
@@ -168,13 +220,6 @@ class DaisyLight(DaisyDevice):
 
         v = f"A{brightness:03d}R{rgb[0]:03d}G{rgb[1]:03d}B{rgb[2]:03d}"
 
-        if(self.idDevicetype == 21):
-            commandId = 146
-            lowlevelCommand = "CH1"
-        elif(self.idDevicetype == 23):
-            commandId = 137
-            lowlevelCommand = None
-
         return self.client.feed_the_commands(
             installation=self.installation,
             commandsList=[
@@ -185,63 +230,83 @@ class DaisyLight(DaisyDevice):
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                 }
+                | specific_params
             ],
         )
 
-    def turn_on(self):
-
-        if (self.idDevicetype == 21):
-            commandId = 146
-            lowlevelCommand = "CH1"
-        elif(self.idDevicetype == 23):
-            commandId = 138 # maybe incorrect
-            lowlevelCommand = None
-
+    def _turn_on(self, specific_params: dict):
         return self.client.feed_the_commands(
             installation=self.installation,
             commandsList=[
                 {
                     "commandAction": "POWER",
-                    "commandId": commandId,
                     "commandParam": "ON",
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
-                    "lowlevelCommand": lowlevelCommand,
                 }
+                | specific_params
             ],
         )
 
-    def turn_off(self):
-
-        if (self.idDevicetype == 21):
-            commandId = 147
-            lowlevelCommand = "CH8"
-        elif(self.idDevicetype == 23):
-            commandId = 138
-            lowlevelCommand = None
-
+    def _turn_off(self, specific_params: dict):
         return self.client.feed_the_commands(
             installation=self.installation,
             commandsList=[
                 {
                     "commandAction": "POWER",
-                    "commandId": commandId,
+                    "commandId": 138,
                     "commandParam": "OFF",
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
-                    "lowlevelCommand": lowlevelCommand,
+                    "lowlevelCommand": None,
                 }
+                | specific_params
             ],
         )
 
 
-@dataclass
-class DaisyRoom:
-    idInstallationRoom: int
-    idRoomtype: int
-    roomDescription: str
-    roomOrder: int
-    deviceList: list[DaisyDevice]
+class DaisyRGBLight(DaisyLight):
+    idDevicetype: Literal[23]
+
+    def set_rgb_and_brightness(
+        self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
+    ):
+        return self._set_rgb_and_brightness(
+            rgb, brightness, {"commandId": 137, "lowlevelCommand": None}
+        )
+
+    def turn_on(self):
+        return self._turn_on({"commandId": 138, "lowlevelCommand": None})
+
+    def turn_off(self):
+        return self._turn_off({"commandId": 138, "lowlevelCommand": None})
+
+
+class DaisyWhiteLight(DaisyLight):
+    idDevicetype: Literal[21]
+
+    def set_rgb_and_brightness(
+        self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
+    ):
+        return self._set_rgb_and_brightness(
+            rgb, brightness, {"commandId": 146, "lowlevelCommand": "CH1"}
+        )
+
+    def turn_on(self):
+        return self._turn_on({"commandId": 146, "lowlevelCommand": "CH1"})
+
+    def turn_off(self):
+        return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
+
+
+DaisyDeviceUnion = Annotated[
+    DaisyCover | DaisyRGBLight | DaisyWhiteLight,
+    Field(discriminator="idDevicetype"),
+]
+
+
+class DaisyRoom(DaisyBaseRoom):
+    deviceList: list[DaisyDeviceUnion]
 
 
 class TelecoDaisy:
@@ -254,91 +319,101 @@ class TelecoDaisy:
         self.email = email
         self.password = password
 
-    def login(self):
-        login = self.s.post(
-            base_url + "teleco/services/account-login",
-            json={"email": self.email, "pwd": self.password},
-        )
-        login_json = login.json()
-        if login_json["codEsito"] != "S":
-            raise Exception(login_json)
+    def _tmate20_post(self, url, json: dict | None = None) -> dict:
+        payload = {"idSession": self.idSession}
+        if json:
+            payload |= json
+        req = self.s.post(base_url + url, json=payload)
+        return req.json()
 
-        self.idAccount = login_json["valRisultato"]["idAccount"]
-        self.idSession = login_json["valRisultato"]["idSession"]
+    def _post(self, url, json: dict | None = None, unauth=False) -> dict:
+        if unauth:
+            _json = json
+        else:
+            _json = {"idSession": self.idSession, "idAccount": self.idAccount}
+            if json:
+                _json |= json
+        req = self.s.post(base_url + url, json=_json)
+        req_json = req.json()
+        if req_json["codEsito"] != "S":
+            raise Exception(req_json)
+        return req_json["valRisultato"]
+
+    def login(self):
+        login = self._post(
+            "teleco/services/account-login",
+            {"email": self.email, "pwd": self.password},
+            unauth=True,
+        )
+        self.idAccount = login["idAccount"]
+        self.idSession = login["idSession"]
 
     def get_account_installation_list(self) -> list[DaisyInstallation]:
-        req = self.s.post(
-            base_url + "teleco/services/account-installation-list",
-            json={"idSession": self.idSession, "idAccount": self.idAccount},
-        )
-        req_json = req.json()
-        if req_json["codEsito"] != "S":
-            raise Exception(req_json)
+        req = self._post("teleco/services/account-installation-list")
 
-        installations = []
-        for inst in req_json["valRisultato"]["installationList"]:
-            installations += [DaisyInstallation(**inst, client=self)]
-        return installations
+        return [DaisyInstallation(**inst) for inst in req["installationList"]]
 
     def get_installation_is_active(self, installation: DaisyInstallation):
-        req = self.s.post(
-            base_url + "teleco/services/tmate20/nodestatus",
-            json={
-                "idSession": self.idSession,
-                "idInstallation": installation.idInstallation,
-            },
+        res = self._tmate20_post(
+            "teleco/services/tmate20/nodestatus/",
+            {"idInstallation": installation.instCode},
         )
-        req_json = req.json()
-        return req_json["nodeActive"]
+        return res["nodeActive"]
+
+    def get_room_configuration_list(self, installation: DaisyInstallation):
+        req = self._post(
+            "teleco/services/room-configuration-list",
+            {"idInstallation": installation.idInstallation},
+        )
+        return [DaisyRoomWithCommands(**dr) for dr in req["roomList"]]
 
     def get_room_list(self, installation: DaisyInstallation) -> list[DaisyRoom]:
-        req = self.s.post(
-            base_url + "teleco/services/room-list",
-            json={
-                "idSession": self.idSession,
-                "idAccount": self.idAccount,
-                "idInstallation": installation.idInstallation,
-            },
+        room_list = self._post(
+            "teleco/services/room-list",
+            {"idInstallation": installation.idInstallation},
         )
-        req_json = req.json()
-        if req_json["codEsito"] != "S":
-            raise Exception(req_json)
 
         rooms = []
-        for room in req_json["valRisultato"]["roomList"]:
-            devices = []
-            for device in room.pop("deviceList"):
+        for room in room_list["roomList"]:
+            for dv in room["deviceList"]:
+                dv["installation"] = installation
+                dv["client"] = self
+            rooms += [DaisyRoom(**room)]
 
-                # 21 White LED light
-                # 23 RGB LED light
-                if device["idDevicetype"] in (21,23):
-                    devices += [
-                        DaisyLight(**device, client=self, installation=installation)
-                    ]
-                elif device["idDevicetype"] in (22, 24):
-                    devices += [
-                        DaisyCover(**device, client=self, installation=installation)
-                    ]
-            rooms += [DaisyRoom(**room, deviceList=devices)]
         return rooms
 
     def status_device_list(
         self, installation: DaisyInstallation, device: DaisyDevice
     ) -> list[DaisyStatus]:
-        req = self.s.post(
-            base_url + "teleco/services/status-device-list",
-            json={
-                "idSession": self.idSession,
-                "idAccount": self.idAccount,
+        status_device_list = self._post(
+            "teleco/services/status-device-list",
+            {
                 "idInstallation": installation.idInstallation,
                 "idInstallationDevice": device.idInstallationDevice,
             },
         )
-        req_json = req.json()
-        if req_json["codEsito"] != "S":
-            raise Exception(req_json)
 
-        return [DaisyStatus(**x) for x in req_json["valRisultato"]["statusitemList"]]
+        return [DaisyStatus(**x) for x in status_device_list["statusitemList"]]
+
+    def _scenario_list(self, installation: DaisyInstallation):
+        req = self._post(
+            "teleco/services/scenario-list",
+            {
+                "idInstallation": installation.idInstallation,
+            },
+        )
+
+        return req
+
+    def _command_scenario_list(self, installation: DaisyInstallation, szenario_id):
+        req = self._post(
+            "teleco/services/command-scenario-list",
+            json={
+                "idInstallation": installation.idInstallation,
+                "idInstallationScenario": szenario_id,
+            },
+        )
+        return req
 
     def feed_the_commands(
         self,
@@ -346,39 +421,37 @@ class TelecoDaisy:
         commandsList: list[dict],
         ignore_ack=False,
     ):
-        req = self.s.post(
-            base_url + "teleco/services/tmate20/feedthecommands/",
+        res = self._tmate20_post(
+            "teleco/services/tmate20/feedthecommands/",
             json={
                 "commandsList": commandsList,
                 "idInstallation": installation.instCode,
-                "idSession": self.idSession,
                 "idScenario": 0,
                 "isScenario": False,
             },
         )
-        req_json = req.json()
-        if req_json["MessageID"] != "WS-000":
-            raise Exception(req_json)
+        if res["MessageID"] != "WS-000":
+            raise Exception(res)
 
         if ignore_ack:
             return {"success": None}
 
-        return self._get_ack(installation, req_json["ActionReference"])
+        return self._get_ack(installation, res["ActionReference"])
 
     def _get_ack(self, installation: DaisyInstallation, action_reference: str):
-        req = self.s.post(
-            base_url + "teleco/services/tmate20/getackcommand/",
+        res = self._tmate20_post(
+            "teleco/services/tmate20/getackcommand/",
             json={
                 "id": action_reference,
                 "idInstallation": installation.instCode,
                 "idSession": self.idSession,
             },
         )
-        req_json = req.json()
-        assert req_json["MessageID"] == "WS-300"
-        if req_json["MessageText"] == "RCV":
+        if res["MessageID"] != "WS-300":
+            raise AssertionError()
+        if res["MessageText"] == "RCV":
             sleep(0.5)
             return self._get_ack(installation, action_reference)
-        if req_json["MessageText"] == "PROC":
+        if res["MessageText"] == "PROC":
             return {"success": True}
         return {"success": False}
