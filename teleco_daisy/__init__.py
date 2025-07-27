@@ -26,10 +26,10 @@ class DaisyInstallation(BaseModel):
     instCode: str
     instDescription: str
     installationOrder: int
-    latitude: float
-    longitude: float
-    weekend: str  # list[str]
-    workdays: str  # list[str]
+    latitude: float | None
+    longitude: float | None
+    weekend: str | None  # list[str]
+    workdays: str | None  # list[str]
 
     def __str__(self):
         return f"DaisyInstallation fw{self.firmwareVersion}"
