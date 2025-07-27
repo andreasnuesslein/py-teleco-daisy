@@ -288,8 +288,59 @@ class DaisyWhiteLight(DaisyLight):
     def set_rgb_and_brightness(
         self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
     ):
+        if self.idDevicemodel == 17:
+            return self._4_level_brightness(brightness)
         return self._set_rgb_and_brightness(
             rgb, brightness, {"commandId": 146, "lowlevelCommand": "CH1"}
+        )
+
+    # @osteward's light
+    def _4_level_brightness(self, brightness: int):
+        if brightness == 0:
+            parms = {
+                "commandCode": "POWEROFF",
+                "commandAction": "POWER",
+                "commandParam": "OFF",
+                "lowlevelCommand": "CH8",
+            }
+        if brightness < 25:
+            parms = {
+                "commandCode": "LEVEL25",
+                "commandAction": "LEVEL",
+                "commandParam": "LEV1",
+                "lowlevelCommand": "CH4",
+            }
+
+        elif brightness <= 50:
+            parms = {
+                "commandCode": "LEVEL50",
+                "commandAction": "LEVEL",
+                "commandParam": "LEV2",
+                "lowlevelCommand": "CH3",
+            }
+        elif brightness <= 75:
+            parms = {
+                "commandCode": "LEVEL75",
+                "commandAction": "LEVEL",
+                "commandParam": "LEV3",
+                "lowlevelCommand": "CH2",
+            }
+        else:
+            parms = {
+                "commandCode": "LEVEL100",
+                "commandAction": "LEVEL",
+                "commandParam": "LEV4",
+                "lowlevelCommand": "CH1",
+            }
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                }
+                | parms
+            ],
         )
 
     def turn_on(self):
