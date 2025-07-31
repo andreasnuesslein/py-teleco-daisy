@@ -283,7 +283,7 @@ class DaisyRGBLight(DaisyLight):
 
 
 class DaisyWhiteLight(DaisyLight):
-    idDevicetype: Literal[21]
+    idDevicetype: Literal[21, 25]
 
     def set_rgb_and_brightness(
         self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
