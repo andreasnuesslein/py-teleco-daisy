@@ -1,8 +1,8 @@
 from time import sleep
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 import requests
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 base_url = "https://tmate.telecoautomation.com/"
 
@@ -56,6 +56,9 @@ class DaisyDevice(DaisyBaseDevice):
     client: "TelecoDaisy"
     installation: DaisyInstallation
 
+    def __str__(self):
+        return f'{self.__class__.__name__} "{self.label}"'
+
     def update_state(self) -> list[DaisyStatus]:
         return self.client.status_device_list(self.installation, self)
 
@@ -73,10 +76,13 @@ class DaisyDeviceWithCommands(DaisyBaseDevice):
     deviceCommandList: list[DeviceCommand]
 
     def __str__(self):
-        return f'DaisyDevice "{self.label}" (type: {self.idDevicetype})'
+        return (
+            f'DaisyDevice "{self.label}" '
+            f"(deviceType: {self.idDevicetype}, deviceModel: {self.idDevicemodel})"
+        )
 
 
-class DaisyBaseRoom(BaseModel):
+class DaisyRoom(BaseModel):
     idInstallationRoom: int
     idRoomtype: int
     roomDescription: str
@@ -87,7 +93,7 @@ class DaisyBaseRoom(BaseModel):
         return f'DaisyRoom "{self.roomDescription}"'
 
 
-class DaisyRoomWithCommands(DaisyBaseRoom):
+class DaisyRoomWithCommands(DaisyRoom):
     deviceList: list[DaisyDeviceWithCommands]
 
 
@@ -96,9 +102,6 @@ class DaisyCover(DaisyDevice):
     is_closed: bool | None = None
 
     osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]]
-
-    def __str__(self):
-        return f'DaisyCover "{self.label}"'
 
     def update_state(self):
         stati = super().update_state()
@@ -163,8 +166,6 @@ class DaisyCover(DaisyDevice):
 
 
 class DaisyAwningsCover(DaisyCover):
-    idDevicetype: Literal[22]
-
     osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
         "open": {"commandId": 75, "commandParam": "OPEN", "lowlevelCommand": "CH5"},
         "stop": {"commandId": 76, "commandParam": "STOP", "lowlevelCommand": "CH7"},
@@ -173,8 +174,6 @@ class DaisyAwningsCover(DaisyCover):
 
 
 class DaisySlatsCover(DaisyCover):
-    idDevicetype: Literal[24]
-
     osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
         "open": {"commandId": 94, "commandParam": "OPEN", "lowlevelCommand": "CH4"},
         "stop": {"commandId": 95, "commandParam": "STOP", "lowlevelCommand": "CH7"},
@@ -186,9 +185,6 @@ class DaisyLight(DaisyDevice):
     is_on: bool | None = None
     brightness: int | None = None  # from 0 to 100
     rgb: tuple[int, int, int] | None = None
-
-    def __str__(self):
-        return f'DaisyLight "{self.label}"'
 
     def update_state(self):
         stati = super().update_state()
@@ -254,7 +250,6 @@ class DaisyLight(DaisyDevice):
             commandsList=[
                 {
                     "commandAction": "POWER",
-                    "commandId": 138,
                     "commandParam": "OFF",
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
@@ -266,8 +261,6 @@ class DaisyLight(DaisyDevice):
 
 
 class DaisyRGBLight(DaisyLight):
-    idDevicetype: Literal[23]
-
     def set_rgb_and_brightness(
         self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
     ):
@@ -283,8 +276,6 @@ class DaisyRGBLight(DaisyLight):
 
 
 class DaisyWhiteLight(DaisyLight):
-    idDevicetype: Literal[21, 25]
-
     def set_rgb_and_brightness(
         self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
     ):
@@ -293,20 +284,30 @@ class DaisyWhiteLight(DaisyLight):
         )
 
     def turn_on(self):
+        # https://github.com/andreasnuesslein/py-teleco-daisy/issues/10
+        if self.idDevicetype == 21 and self.idDevicemodel == 17:
+            return self._turn_on({"commandId": 40, "lowlevelCommand": "CH1"})
         return self._turn_on({"commandId": 146, "lowlevelCommand": "CH1"})
 
     def turn_off(self):
+        # https://github.com/andreasnuesslein/py-teleco-daisy/issues/10
+        if self.idDevicetype == 21 and self.idDevicemodel == 17:
+            return self._turn_off({"commandId": 41, "lowlevelCommand": "CH8"})
         return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
 
 
-DaisyDeviceUnion = Annotated[
-    DaisyAwningsCover | DaisySlatsCover | DaisyWhiteLight | DaisyRGBLight,
-    Field(discriminator="idDevicetype"),
-]
-
-
-class DaisyRoom(DaisyBaseRoom):
-    deviceList: list[DaisyDeviceUnion]
+def create_specific_device(dev):
+    match dev:
+        case {"idDevicetype": 21 | 25}:
+            return DaisyWhiteLight(**dev)
+        case {"idDevicetype": 23}:
+            return DaisyRGBLight(**dev)
+        case {"idDevicetype": 22}:
+            return DaisyAwningsCover(**dev)
+        case {"idDevicetype": 24}:
+            return DaisySlatsCover(**dev)
+        case _:
+            return DaisyDevice(**dev)
 
 
 class TelecoDaisy:
@@ -375,10 +376,12 @@ class TelecoDaisy:
 
         rooms = []
         for room in room_list["roomList"]:
+            device_list = []
             for dv in room["deviceList"]:
                 dv["installation"] = installation
                 dv["client"] = self
-            rooms += [DaisyRoom(**room)]
+                device_list += [create_specific_device(dv)]
+            rooms += [DaisyRoom(**room | {"deviceList": device_list})]
 
         return rooms
 
