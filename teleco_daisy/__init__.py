@@ -296,8 +296,76 @@ class DaisyWhiteLight(DaisyLight):
         return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
 
 
+class DaisyHeater4CH(DaisyDevice):
+    def turn_on(self):
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "commandAction": "POWER",
+                    "commandParam": "ON",
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                    "lowlevelCommand": "CH1",
+                    "idDevicetypeCommandModel": 58,
+                }
+            ],
+        )
+
+    def turn_off(self):
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "commandAction": "POWER",
+                    "commandParam": "OFF",
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                    "lowlevelCommand": "CH4",
+                    "idDevicetypeCommandModel": 59,
+                }
+            ],
+        )
+
+    def set_level(self, level: Literal["50", "75", "100"]):
+        if level == "50":
+            cmd = {
+                "idDevicetypeCommandModel": 60,
+                "commandAction": "LEVEL",
+                "commandParam": "LEV2",
+                "lowlevelCommand": "CH3",
+            }
+        elif level == "75":
+            cmd = {
+                "idDevicetypeCommandModel": 61,
+                "commandAction": "LEVEL",
+                "commandParam": "LEV3",
+                "lowlevelCommand": "CH2",
+            }
+        elif level == "100":
+            cmd = {
+                "idDevicetypeCommandModel": 62,
+                "commandAction": "LEVEL",
+                "commandParam": "LEV4",
+                "lowlevelCommand": "CH1",
+            }
+
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                }
+                | cmd
+            ],
+        )
+
+
 def create_specific_device(dev):
     match dev:
+        case {"idDevicetype": 21, "idDevicemodel": 20}:
+            return DaisyHeater4CH(**dev)
         case {"idDevicetype": 21 | 25}:
             return DaisyWhiteLight(**dev)
         case {"idDevicetype": 23}:
