@@ -119,7 +119,7 @@ class DaisyCover(DaisyDevice):
         return stati
 
     def open_cover(self, percent: Literal["33", "66", "100"] | None = None):
-        if percent == "100":
+        if percent == "100" or percent is None:
             return self._open_stop_close("open")
         return self._control_cover(percent)
 
