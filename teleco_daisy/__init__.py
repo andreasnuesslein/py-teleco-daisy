@@ -98,7 +98,6 @@ class DaisyRoomWithCommands(DaisyRoom):
 
 
 class DaisyCover(DaisyDevice):
-    position: int | None = None
     is_closed: bool | None = None
 
     osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]]
@@ -114,14 +113,10 @@ class DaisyCover(DaisyDevice):
                         self.is_closed = False
                     case _:
                         self.is_closed = None
-            if status.statusitemCode == "LEVEL":
-                self.position = int(status.statusValue)
         return stati
 
-    def open_cover(self, percent: Literal["33", "66", "100"] | None = None):
-        if percent == "100" or percent is None:
-            return self._open_stop_close("open")
-        return self._control_cover(percent)
+    def open_cover(self):
+        return self._open_stop_close("open")
 
     def stop_cover(self):
         self._open_stop_close("stop")
@@ -142,13 +137,25 @@ class DaisyCover(DaisyDevice):
             ],
         )
 
-    def _control_cover(self, percent: Literal["33", "66", "100"]):
+
+class DaisySlatsCover(DaisyCover):
+    position: int | None = None
+
+    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
+        "open": {"commandId": 94, "commandParam": "OPEN", "lowlevelCommand": "CH4"},
+        "stop": {"commandId": 95, "commandParam": "STOP", "lowlevelCommand": "CH7"},
+        "close": {"commandId": 96, "commandParam": "CLOSE", "lowlevelCommand": "CH1"},
+    }
+
+    def open_cover(self, percent: Literal["33", "66", "100"] | None = None):
+        if percent == "100" or percent is None:
+            return self._open_stop_close("open")
+
         percent_map = {
-            "33": ["LEV2", 97, "CH2"],
-            "66": ["LEV3", 98, "CH3"],
-            "100": ["LEV4", 99, "CH4"],
+            "33": {"commandParam": "LEV2", "commandId": 97, "lowlevelCommand": "CH2"},
+            "66": {"commandParam": "LEV3", "commandId": 98, "lowlevelCommand": "CH3"},
+            "100": {"commandParam": "LEV4", "commandId": 99, "lowlevelCommand": "CH4"},
         }
-        c_param, c_id, c_ll = percent_map[percent]
 
         return self.client.feed_the_commands(
             installation=self.installation,
@@ -157,28 +164,17 @@ class DaisyCover(DaisyDevice):
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                     "commandAction": "LEVEL",
-                    "commandId": c_id,
-                    "commandParam": c_param,
-                    "lowlevelCommand": c_ll,
                 }
+                | percent_map[percent]
             ],
         )
 
-
-class DaisyAwningsCover(DaisyCover):
-    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
-        "open": {"commandId": 75, "commandParam": "OPEN", "lowlevelCommand": "CH5"},
-        "stop": {"commandId": 76, "commandParam": "STOP", "lowlevelCommand": "CH7"},
-        "close": {"commandId": 77, "commandParam": "CLOSE", "lowlevelCommand": "CH8"},
-    }
-
-
-class DaisySlatsCover(DaisyCover):
-    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
-        "open": {"commandId": 94, "commandParam": "OPEN", "lowlevelCommand": "CH4"},
-        "stop": {"commandId": 95, "commandParam": "STOP", "lowlevelCommand": "CH7"},
-        "close": {"commandId": 96, "commandParam": "CLOSE", "lowlevelCommand": "CH1"},
-    }
+    def update_state(self):
+        stati = super().update_state()
+        for status in stati:
+            if status.statusitemCode == "LEVEL":
+                self.position = int(status.statusValue)
+        return stati
 
 
 class DaisyShadeCover(DaisyCover):
@@ -189,54 +185,20 @@ class DaisyShadeCover(DaisyCover):
     }
 
 
+class DaisyAwningsCover(DaisyShadeCover):
+    pass  # legacy support.
+
+
 class DaisyLight(DaisyDevice):
     is_on: bool | None = None
     brightness: int | None = None  # from 0 to 100
-    rgb: tuple[int, int, int] | None = None
 
     def update_state(self):
         stati = super().update_state()
         for status in stati:
             if status.statusitemCode == "POWER":
                 self.is_on = status.statusValue == "ON"
-            if status.statusitemCode == "COLOR":
-                val = status.statusValue
-                self.brightness = int(val[1:4])
-                self.rgb = (int(val[5:8]), int(val[9:12]), int(val[13:16]))
         return stati
-
-    def _set_rgb_and_brightness(
-        self,
-        rgb: tuple[int, int, int] | None = None,
-        brightness: int | None = None,
-        specific_params: dict | None = None,
-    ):
-        if specific_params is None:
-            specific_params = {}
-        if brightness is None:
-            brightness = self.brightness or 0
-        if 0 > brightness or brightness > 100:
-            raise ValueError("Brightness must be between 0 and 100")
-        if rgb is None:
-            rgb = self.rgb or (255, 255, 255)
-        if any((c < 0 or c > 255) for c in rgb):
-            raise ValueError("Color must be between 0 and 255")
-
-        v = f"A{brightness:03d}R{rgb[0]:03d}G{rgb[1]:03d}B{rgb[2]:03d}"
-
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "COLOR",
-                    "commandId": 137,
-                    "commandParam": v,
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                }
-                | specific_params
-            ],
-        )
 
     def _turn_on(self, specific_params: dict):
         return self.client.feed_the_commands(
@@ -269,11 +231,43 @@ class DaisyLight(DaisyDevice):
 
 
 class DaisyRGBLight(DaisyLight):
+    rgb: tuple[int, int, int] | None = None
+
+    def update_state(self):
+        stati = super().update_state()
+        for status in stati:
+            if status.statusitemCode == "COLOR":
+                val = status.statusValue
+                self.brightness = int(val[1:4])
+                self.rgb = (int(val[5:8]), int(val[9:12]), int(val[13:16]))
+        return stati
+
     def set_rgb_and_brightness(
         self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
     ):
-        return self._set_rgb_and_brightness(
-            rgb, brightness, {"commandId": 137, "lowlevelCommand": None}
+        if brightness is None:
+            brightness = self.brightness or 0
+        if 0 > brightness or brightness > 100:
+            raise ValueError("Brightness must be between 0 and 100")
+        if rgb is None:
+            rgb = self.rgb or (255, 255, 255)
+        if any((c < 0 or c > 255) for c in rgb):
+            raise ValueError("Color must be between 0 and 255")
+
+        v = f"A{brightness:03d}R{rgb[0]:03d}G{rgb[1]:03d}B{rgb[2]:03d}"
+
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "commandAction": "COLOR",
+                    "commandId": 137,
+                    "commandParam": v,
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                    "lowlevelCommand": None,
+                }
+            ],
         )
 
     def turn_on(self):
@@ -284,11 +278,26 @@ class DaisyRGBLight(DaisyLight):
 
 
 class DaisyWhiteLight(DaisyLight):
-    def set_rgb_and_brightness(
-        self, rgb: tuple[int, int, int] | None = None, brightness: int | None = None
-    ):
-        return self._set_rgb_and_brightness(
-            rgb, brightness, {"commandId": 146, "lowlevelCommand": "CH1"}
+    def set_brightness(self, brightness: int):
+        if brightness is None:
+            brightness = self.brightness or 0
+        if 0 > brightness or brightness > 100:
+            raise ValueError("Brightness must be between 0 and 100")
+
+        v = f"A{brightness:03d}R255G255B255"
+
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "commandAction": "COLOR",
+                    "commandId": 146,
+                    "commandParam": v,
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                    "lowlevelCommand": "CH1",
+                }
+            ],
         )
 
     def turn_on(self):
@@ -304,6 +313,58 @@ class DaisyWhiteLight(DaisyLight):
         return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
 
 
+class DaisyWhite4LevelLight(DaisyLight):
+    brightness_map: dict[Literal[25, 50, 75, 100], dict[str, Any]]
+
+    def set_brightness(self, brightness: int):
+        if brightness is None:
+            brightness = self.brightness or 0
+        if 0 > brightness or brightness > 100:
+            raise ValueError("Brightness must be between 0 and 100")
+
+        if brightness is None or brightness == 0:
+            return self.turn_off()
+
+        if 1 <= brightness <= 37:
+            vals = self.brightness_map[25]
+        elif 38 <= brightness <= 62:
+            vals = self.brightness_map[50]
+        elif 63 <= brightness <= 87:
+            vals = self.brightness_map[75]
+        else:  # 76-100
+            vals = self.brightness_map[100]
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "commandAction": "LEVEL",
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                }
+                | vals
+            ],
+        )
+
+    def turn_on(self):
+        if self.idDevicetype == 21 and self.idDevicemodel == 17:
+            return self._turn_on({"commandId": 40, "lowlevelCommand": "CH1"})
+        if self.idDevicetype == 21 and self.idDevicemodel == 34:
+            return self._turn_on({"commandId": 146, "lowlevelCommand": "CH1"})
+
+        # legacy, without devicemodelmatching
+        return self._turn_on({"commandId": 146, "lowlevelCommand": "CH1"})
+
+    def turn_off(self):
+        # https://github.com/andreasnuesslein/py-teleco-daisy/issues/10
+        if self.idDevicetype == 21 and self.idDevicemodel == 17:
+            return self._turn_off({"commandId": 41, "lowlevelCommand": "CH8"})
+        if self.idDevicetype == 21 and self.idDevicemodel == 34:
+            return self._turn_on({"commandId": 147, "lowlevelCommand": "CH8"})
+
+        # legacy, without devicemodelmatching
+        return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
+
+
 class DaisyHeater4CH(DaisyDevice):
     def turn_on(self):
         return self.client.feed_the_commands(
@@ -315,7 +376,8 @@ class DaisyHeater4CH(DaisyDevice):
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                     "lowlevelCommand": "CH1",
-                    "idDevicetypeCommandModel": 58,
+                    # "idDevicetypeCommandModel": 58,
+                    "commandId": 58,
                 }
             ],
         )
@@ -330,7 +392,8 @@ class DaisyHeater4CH(DaisyDevice):
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                     "lowlevelCommand": "CH4",
-                    "idDevicetypeCommandModel": 59,
+                    # "idDevicetypeCommandModel": 59,
+                    "commandId": 59,
                 }
             ],
         )
@@ -338,22 +401,22 @@ class DaisyHeater4CH(DaisyDevice):
     def set_level(self, level: Literal["50", "75", "100"]):
         if level == "50":
             cmd = {
-                "idDevicetypeCommandModel": 60,
-                "commandAction": "LEVEL",
+                # "idDevicetypeCommandModel": 60,
+                "commandId": 60,
                 "commandParam": "LEV2",
                 "lowlevelCommand": "CH3",
             }
         elif level == "75":
             cmd = {
-                "idDevicetypeCommandModel": 61,
-                "commandAction": "LEVEL",
+                # "idDevicetypeCommandModel": 61,
+                "commandId": 61,
                 "commandParam": "LEV3",
                 "lowlevelCommand": "CH2",
             }
-        elif level == "100":
+        else:
             cmd = {
-                "idDevicetypeCommandModel": 62,
-                "commandAction": "LEVEL",
+                # "idDevicetypeCommandModel": 62,
+                "commandId": 62,
                 "commandParam": "LEV4",
                 "lowlevelCommand": "CH1",
             }
@@ -362,6 +425,7 @@ class DaisyHeater4CH(DaisyDevice):
             installation=self.installation,
             commandsList=[
                 {
+                    "commandAction": "LEVEL",
                     "deviceCode": str(self.deviceIndex),
                     "idInstallationDevice": self.idInstallationDevice,
                 }
@@ -372,18 +436,64 @@ class DaisyHeater4CH(DaisyDevice):
 
 def create_specific_device(dev):
     match dev:
+        # #1.
+        case {"idDevicetype": 23, "idDevicemodel": 32}:
+            return DaisyRGBLight(**dev)
+        case {"idDevicetype": 24, "idDevicemodel": 27}:
+            return DaisySlatsCover(**dev)
+
+        # #4
+        case {"idDevicetype": 21, "idDevicemodel": 34}:
+            dev["brightness_map"] = {
+                25: {
+                    "commandParam": "LEV1",
+                    "commandId": 141,
+                    "lowlevelCommand": "CH4",
+                },
+                50: {
+                    "commandParam": "LEV2",
+                    "commandId": 142,
+                    "lowlevelCommand": "CH3",
+                },
+                75: {
+                    "commandParam": "LEV3",
+                    "commandId": 143,
+                    "lowlevelCommand": "CH2",
+                },
+                100: {
+                    "commandParam": "LEV4",
+                    "commandId": 144,
+                    "lowlevelCommand": "CH1",
+                },
+            }
+            return DaisyWhite4LevelLight(**dev)
+        case {"idDevicetype": 21, "idDevicemodel": 17}:
+            dev["brightness_map"] = {
+                25: {"commandParam": "LEV1", "commandId": 42, "lowlevelCommand": "CH4"},
+                50: {"commandParam": "LEV2", "commandId": 43, "lowlevelCommand": "CH3"},
+                75: {"commandParam": "LEV3", "commandId": 44, "lowlevelCommand": "CH2"},
+                100: {
+                    "commandParam": "LEV4",
+                    "commandId": 45,
+                    "lowlevelCommand": "CH1",
+                },
+            }
+            return DaisyWhite4LevelLight(**dev)
+
+        # 23
         case {"idDevicetype": 21, "idDevicemodel": 20}:
             return DaisyHeater4CH(**dev)
+
         case {"idDevicetype": 22, "idDevicemodel": 25}:
             return DaisyShadeCover(**dev)
-        case {"idDevicetype": 21 | 25}:
-            return DaisyWhiteLight(**dev)
-        case {"idDevicetype": 23}:
-            return DaisyRGBLight(**dev)
-        case {"idDevicetype": 22}:
-            return DaisyAwningsCover(**dev)
-        case {"idDevicetype": 24}:
-            return DaisySlatsCover(**dev)
+
+        # let's deactivate and see who's complaining
+        # case {"idDevicetype": 21 | 25}:
+        #     return DaisyWhiteLight(**dev)
+
+        # I think this was #5
+        # case {"idDevicetype": 22}:
+        #     return DaisyAwningsCover(**dev)
         case _:
             return DaisyDevice(**dev)
 
