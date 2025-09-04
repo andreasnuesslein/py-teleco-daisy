@@ -247,35 +247,35 @@ class DaisyRGBLight(DaisyLight):
         return self._turn_off({"commandId": 138, "lowlevelCommand": None})
 
 
-class DaisyWhiteLight(DaisyLight):
-    def set_brightness(self, brightness: int):
-        if brightness is None:
-            brightness = self.brightness or 0
-        if 0 > brightness or brightness > 100:
-            raise ValueError("Brightness must be between 0 and 100")
-
-        v = f"A{brightness:03d}R255G255B255"
-
-        return self.command(
-            {
-                "commandAction": "COLOR",
-                "commandId": 146,
-                "commandParam": v,
-                "lowlevelCommand": "CH1",
-            }
-        )
-
-    def turn_on(self):
-        # https://github.com/andreasnuesslein/py-teleco-daisy/issues/10
-        if self.idDevicetype == 21 and self.idDevicemodel == 17:
-            return self._turn_on({"commandId": 40, "lowlevelCommand": "CH1"})
-        return self._turn_on({"commandId": 146, "lowlevelCommand": "CH1"})
-
-    def turn_off(self):
-        # https://github.com/andreasnuesslein/py-teleco-daisy/issues/10
-        if self.idDevicetype == 21 and self.idDevicemodel == 17:
-            return self._turn_off({"commandId": 41, "lowlevelCommand": "CH8"})
-        return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
+# class DaisyWhiteLight(DaisyLight):
+#     def set_brightness(self, brightness: int):
+#         if brightness is None:
+#             brightness = self.brightness or 0
+#         if 0 > brightness or brightness > 100:
+#             raise ValueError("Brightness must be between 0 and 100")
+#
+#         v = f"A{brightness:03d}R255G255B255"
+#
+#         return self.command(
+#             {
+#                 "commandAction": "COLOR",
+#                 "commandId": 146,
+#                 "commandParam": v,
+#                 "lowlevelCommand": "CH1",
+#             }
+#         )
+#
+#     def turn_on(self):
+#         # https://github.com/andreasnuesslein/py-teleco-daisy/issues/10
+#         if self.idDevicetype == 21 and self.idDevicemodel == 17:
+#             return self._turn_on({"commandId": 40, "lowlevelCommand": "CH1"})
+#         return self._turn_on({"commandId": 146, "lowlevelCommand": "CH1"})
+#
+#     def turn_off(self):
+#         # https://github.com/andreasnuesslein/py-teleco-daisy/issues/10
+#         if self.idDevicetype == 21 and self.idDevicemodel == 17:
+#             return self._turn_off({"commandId": 41, "lowlevelCommand": "CH8"})
+#         return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
 
 
 class DaisyWhite4LevelLight(DaisyLight):
