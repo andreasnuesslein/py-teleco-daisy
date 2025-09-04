@@ -59,6 +59,18 @@ class DaisyDevice(DaisyBaseDevice):
     def __str__(self):
         return f'{self.__class__.__name__} "{self.label}"'
 
+    def command(self, params: dict):
+        return self.client.feed_the_commands(
+            installation=self.installation,
+            commandsList=[
+                {
+                    "deviceCode": str(self.deviceIndex),
+                    "idInstallationDevice": self.idInstallationDevice,
+                }
+                | params
+            ],
+        )
+
     def update_state(self) -> list[DaisyStatus]:
         return self.client.status_device_list(self.installation, self)
 
@@ -125,16 +137,8 @@ class DaisyCover(DaisyDevice):
         self._open_stop_close("close")
 
     def _open_stop_close(self, open_stop_close: Literal["open", "stop", "close"]):
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                    "commandAction": "OPEN_STOP_CLOSE",
-                }
-                | self.osc_map[open_stop_close]
-            ],
+        return self.command(
+            {"commandAction": "OPEN_STOP_CLOSE"} | self.osc_map[open_stop_close]
         )
 
 
@@ -157,17 +161,7 @@ class DaisySlatsCover(DaisyCover):
             "100": {"commandParam": "LEV4", "commandId": 99, "lowlevelCommand": "CH4"},
         }
 
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                    "commandAction": "LEVEL",
-                }
-                | percent_map[percent]
-            ],
-        )
+        return self.command({"commandAction": "LEVEL"} | percent_map[percent])
 
     def update_state(self):
         stati = super().update_state()
@@ -201,32 +195,13 @@ class DaisyLight(DaisyDevice):
         return stati
 
     def _turn_on(self, specific_params: dict):
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "POWER",
-                    "commandParam": "ON",
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                }
-                | specific_params
-            ],
+        return self.command(
+            {"commandAction": "POWER", "commandParam": "ON"} | specific_params
         )
 
     def _turn_off(self, specific_params: dict):
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "POWER",
-                    "commandParam": "OFF",
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                    "lowlevelCommand": None,
-                }
-                | specific_params
-            ],
+        return self.command(
+            {"commandAction": "POWER", "commandParam": "OFF"} | specific_params
         )
 
 
@@ -256,18 +231,13 @@ class DaisyRGBLight(DaisyLight):
 
         v = f"A{brightness:03d}R{rgb[0]:03d}G{rgb[1]:03d}B{rgb[2]:03d}"
 
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "COLOR",
-                    "commandId": 137,
-                    "commandParam": v,
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                    "lowlevelCommand": None,
-                }
-            ],
+        return self.command(
+            {
+                "commandAction": "COLOR",
+                "commandId": 137,
+                "commandParam": v,
+                "lowlevelCommand": None,
+            }
         )
 
     def turn_on(self):
@@ -286,18 +256,13 @@ class DaisyWhiteLight(DaisyLight):
 
         v = f"A{brightness:03d}R255G255B255"
 
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "COLOR",
-                    "commandId": 146,
-                    "commandParam": v,
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                    "lowlevelCommand": "CH1",
-                }
-            ],
+        return self.command(
+            {
+                "commandAction": "COLOR",
+                "commandId": 146,
+                "commandParam": v,
+                "lowlevelCommand": "CH1",
+            }
         )
 
     def turn_on(self):
@@ -333,17 +298,8 @@ class DaisyWhite4LevelLight(DaisyLight):
             vals = self.brightness_map[75]
         else:  # 76-100
             vals = self.brightness_map[100]
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "LEVEL",
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                }
-                | vals
-            ],
-        )
+
+        return self.command({"commandAction": "LEVEL"} | vals)
 
     def turn_on(self):
         if self.idDevicetype == 21 and self.idDevicemodel == 17:
@@ -367,35 +323,23 @@ class DaisyWhite4LevelLight(DaisyLight):
 
 class DaisyHeater4CH(DaisyDevice):
     def turn_on(self):
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "POWER",
-                    "commandParam": "ON",
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                    "lowlevelCommand": "CH1",
-                    # "idDevicetypeCommandModel": 58,
-                    "commandId": 58,
-                }
-            ],
+        return self.command(
+            {
+                "commandAction": "POWER",
+                "commandParam": "ON",
+                "lowlevelCommand": "CH1",
+                "commandId": 58,
+            }
         )
 
     def turn_off(self):
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "POWER",
-                    "commandParam": "OFF",
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                    "lowlevelCommand": "CH4",
-                    # "idDevicetypeCommandModel": 59,
-                    "commandId": 59,
-                }
-            ],
+        return self.command(
+            {
+                "commandAction": "POWER",
+                "commandParam": "OFF",
+                "lowlevelCommand": "CH4",
+                "commandId": 59,
+            }
         )
 
     def set_level(self, level: Literal["50", "75", "100"]):
@@ -421,17 +365,7 @@ class DaisyHeater4CH(DaisyDevice):
                 "lowlevelCommand": "CH1",
             }
 
-        return self.client.feed_the_commands(
-            installation=self.installation,
-            commandsList=[
-                {
-                    "commandAction": "LEVEL",
-                    "deviceCode": str(self.deviceIndex),
-                    "idInstallationDevice": self.idInstallationDevice,
-                }
-                | cmd
-            ],
-        )
+        return self.command({"commandAction": "LEVEL"} | cmd)
 
 
 def create_specific_device(dev):
