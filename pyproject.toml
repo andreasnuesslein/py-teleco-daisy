@@ -1,6 +1,6 @@
 [project]
 name = "teleco-daisy"
-version = "0.1.9"
+version = "0.1.11"
 description = ""
 readme = "README.md"
 requires-python = ">=3.11"

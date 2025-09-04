@@ -172,15 +172,7 @@ class DaisySlatsCover(DaisyCover):
 
 
 class DaisyShadeCover(DaisyCover):
-    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
-        "open": {"commandId": 75, "commandParam": "OPEN", "lowlevelCommand": "CH5"},
-        "stop": {"commandId": 76, "commandParam": "STOP", "lowlevelCommand": "CH7"},
-        "close": {"commandId": 77, "commandParam": "CLOSE", "lowlevelCommand": "CH8"},
-    }
-
-
-class DaisyAwningsCover(DaisyShadeCover):
-    pass  # legacy support.
+    pass
 
 
 class DaisyLight(DaisyDevice):
@@ -414,11 +406,50 @@ def create_specific_device(dev):
             }
             return DaisyWhite4LevelLight(**dev)
 
-        # 23
+        # #23
         case {"idDevicetype": 21, "idDevicemodel": 20}:
             return DaisyHeater4CH(**dev)
 
+        # #12
+        case {"idDevicetype": 22, "idDevicemodel": 31}:
+            dev["osc_map"] = {
+                "open": {
+                    "commandId": 111,
+                    "commandParam": "OPEN",
+                    "lowlevelCommand": "CH5",
+                },
+                "stop": {
+                    "commandId": 112,
+                    "commandParam": "STOP",
+                    "lowlevelCommand": "CH7",
+                },
+                "close": {
+                    "commandId": 113,
+                    "commandParam": "CLOSE",
+                    "lowlevelCommand": "CH8",
+                },
+            }
+            return DaisyShadeCover(**dev)
+
+        # #12
         case {"idDevicetype": 22, "idDevicemodel": 25}:
+            dev["osc_map"] = {
+                "open": {
+                    "commandId": 75,
+                    "commandParam": "OPEN",
+                    "lowlevelCommand": "CH5",
+                },
+                "stop": {
+                    "commandId": 76,
+                    "commandParam": "STOP",
+                    "lowlevelCommand": "CH7",
+                },
+                "close": {
+                    "commandId": 77,
+                    "commandParam": "CLOSE",
+                    "lowlevelCommand": "CH8",
+                },
+            }
             return DaisyShadeCover(**dev)
 
         # let's deactivate and see who's complaining
