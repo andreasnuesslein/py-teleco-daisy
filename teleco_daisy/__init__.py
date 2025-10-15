@@ -175,6 +175,10 @@ class DaisyShadeCover(DaisyCover):
     pass
 
 
+class DaisyAwningCover(DaisyCover):
+    pass
+
+
 class DaisyLight(DaisyDevice):
     is_on: bool | None = None
     brightness: int | None = None  # from 0 to 100
@@ -451,6 +455,26 @@ def create_specific_device(dev):
                 },
             }
             return DaisyShadeCover(**dev)
+
+        case {"idDevicetype": 22, "idDevicemodel": 21}:
+            dev["osc_map"] = {
+                "open": {
+                    "commandId": 63,
+                    "commandParam": "OPEN",
+                    "lowlevelCommand": "CH5",
+                },
+                "stop": {
+                    "commandId": 64,
+                    "commandParam": "STOP",
+                    "lowlevelCommand": "CH7",
+                },
+                "close": {
+                    "commandId": 65,
+                    "commandParam": "CLOSE",
+                    "lowlevelCommand": "CH8",
+                },
+            }
+            return DaisyAwningCover(**dev)
 
         # let's deactivate and see who's complaining
         # case {"idDevicetype": 21 | 25}:
