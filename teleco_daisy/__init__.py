@@ -316,6 +316,23 @@ class DaisyWhite4LevelLight(DaisyLight):
         # legacy, without devicemodelmatching
         return self._turn_off({"commandId": 147, "lowlevelCommand": "CH8"})
 
+    def update_state(self):
+        stati = super().update_state()
+        for status in stati:
+            if status.statusitemCode == "POWER":
+                self.is_on = status.statusValue == "ON"
+            elif status.statusitemCode == "LEVEL":
+                try:
+                    self.brightness = {
+                        "25": 25,
+                        "50": 50,
+                        "75": 75,
+                        "100": 100,
+                    }[status.statusValue]
+                except KeyError:
+                    self.brightness = 50
+        return stati
+
 
 class DaisyHeater4CH(DaisyDevice):
     def turn_on(self):
