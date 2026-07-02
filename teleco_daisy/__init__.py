@@ -171,6 +171,33 @@ class DaisySlatsCover(DaisyCover):
         return stati
 
 
+class DaisyRetractableSlatsCover(DaisyCover):
+    position: int | None = None
+
+    osc_map: dict[Literal["open", "stop", "close"], dict[str, Any]] = {
+        "open": {"commandId": 206, "commandParam": "OPEN", "lowlevelCommand": "CH5"},
+        "stop": {"commandId": 207, "commandParam": "STOP", "lowlevelCommand": "CH7"},
+        "close": {"commandId": 208, "commandParam": "CLOSE", "lowlevelCommand": "CH8"},
+    }
+
+    def open_cover_tilt(self, percent: Literal["0", "33", "66", "100"] | None = None):
+        percent_map = {
+            "0": {"commandParam": "LEV1", "commandId": 214, "lowlevelCommand": "CH1"},
+            "33": {"commandParam": "LEV2", "commandId": 210, "lowlevelCommand": "CH2"},
+            "66": {"commandParam": "LEV3", "commandId": 211, "lowlevelCommand": "CH3"},
+            "100": {"commandParam": "LEV4", "commandId": 212, "lowlevelCommand": "CH4"},
+        }
+
+        return self.command({"commandAction": "LEVEL"} | percent_map[percent])
+
+    def update_state(self):
+        stati = super().update_state()
+        for status in stati:
+            if status.statusitemCode == "LEVEL":
+                self.position = int(status.statusValue)
+        return stati
+
+
 class DaisyShadeCover(DaisyCover):
     pass
 
@@ -383,13 +410,22 @@ class DaisyHeater4CH(DaisyDevice):
 
 def create_specific_device(dev):
     match dev:
-        # #1.
-        case {"idDevicetype": 23, "idDevicemodel": 32}:
-            return DaisyRGBLight(**dev)
-        case {"idDevicetype": 24, "idDevicemodel": 27}:
-            return DaisySlatsCover(**dev)
+        case {"idDevicetype": 21, "idDevicemodel": 17}:
+            dev["brightness_map"] = {
+                25: {"commandParam": "LEV1", "commandId": 42, "lowlevelCommand": "CH4"},
+                50: {"commandParam": "LEV2", "commandId": 43, "lowlevelCommand": "CH3"},
+                75: {"commandParam": "LEV3", "commandId": 44, "lowlevelCommand": "CH2"},
+                100: {
+                    "commandParam": "LEV4",
+                    "commandId": 45,
+                    "lowlevelCommand": "CH1",
+                },
+            }
+            return DaisyWhite4LevelLight(**dev)
 
-        # #4
+        case {"idDevicetype": 21, "idDevicemodel": 20}:
+            return DaisyHeater4CH(**dev)
+
         case {"idDevicetype": 21, "idDevicemodel": 34}:
             dev["brightness_map"] = {
                 25: {
@@ -414,64 +450,6 @@ def create_specific_device(dev):
                 },
             }
             return DaisyWhite4LevelLight(**dev)
-        case {"idDevicetype": 21, "idDevicemodel": 17}:
-            dev["brightness_map"] = {
-                25: {"commandParam": "LEV1", "commandId": 42, "lowlevelCommand": "CH4"},
-                50: {"commandParam": "LEV2", "commandId": 43, "lowlevelCommand": "CH3"},
-                75: {"commandParam": "LEV3", "commandId": 44, "lowlevelCommand": "CH2"},
-                100: {
-                    "commandParam": "LEV4",
-                    "commandId": 45,
-                    "lowlevelCommand": "CH1",
-                },
-            }
-            return DaisyWhite4LevelLight(**dev)
-
-        # #23
-        case {"idDevicetype": 21, "idDevicemodel": 20}:
-            return DaisyHeater4CH(**dev)
-
-        # #12
-        case {"idDevicetype": 22, "idDevicemodel": 31}:
-            dev["osc_map"] = {
-                "open": {
-                    "commandId": 111,
-                    "commandParam": "OPEN",
-                    "lowlevelCommand": "CH5",
-                },
-                "stop": {
-                    "commandId": 112,
-                    "commandParam": "STOP",
-                    "lowlevelCommand": "CH7",
-                },
-                "close": {
-                    "commandId": 113,
-                    "commandParam": "CLOSE",
-                    "lowlevelCommand": "CH8",
-                },
-            }
-            return DaisyShadeCover(**dev)
-
-        # #12
-        case {"idDevicetype": 22, "idDevicemodel": 25}:
-            dev["osc_map"] = {
-                "open": {
-                    "commandId": 75,
-                    "commandParam": "OPEN",
-                    "lowlevelCommand": "CH5",
-                },
-                "stop": {
-                    "commandId": 76,
-                    "commandParam": "STOP",
-                    "lowlevelCommand": "CH7",
-                },
-                "close": {
-                    "commandId": 77,
-                    "commandParam": "CLOSE",
-                    "lowlevelCommand": "CH8",
-                },
-            }
-            return DaisyShadeCover(**dev)
 
         case {"idDevicetype": 22, "idDevicemodel": 21}:
             dev["osc_map"] = {
@@ -493,13 +471,53 @@ def create_specific_device(dev):
             }
             return DaisyAwningCover(**dev)
 
-        # let's deactivate and see who's complaining
-        # case {"idDevicetype": 21 | 25}:
-        #     return DaisyWhiteLight(**dev)
+        case {"idDevicetype": 22, "idDevicemodel": 25}:
+            dev["osc_map"] = {
+                "open": {
+                    "commandId": 75,
+                    "commandParam": "OPEN",
+                    "lowlevelCommand": "CH5",
+                },
+                "stop": {
+                    "commandId": 76,
+                    "commandParam": "STOP",
+                    "lowlevelCommand": "CH7",
+                },
+                "close": {
+                    "commandId": 77,
+                    "commandParam": "CLOSE",
+                    "lowlevelCommand": "CH8",
+                },
+            }
+            return DaisyShadeCover(**dev)
 
-        # I think this was #5
-        # case {"idDevicetype": 22}:
-        #     return DaisyAwningsCover(**dev)
+        case {"idDevicetype": 22, "idDevicemodel": 31}:
+            dev["osc_map"] = {
+                "open": {
+                    "commandId": 111,
+                    "commandParam": "OPEN",
+                    "lowlevelCommand": "CH5",
+                },
+                "stop": {
+                    "commandId": 112,
+                    "commandParam": "STOP",
+                    "lowlevelCommand": "CH7",
+                },
+                "close": {
+                    "commandId": 113,
+                    "commandParam": "CLOSE",
+                    "lowlevelCommand": "CH8",
+                },
+            }
+            return DaisyShadeCover(**dev)
+
+        case {"idDevicetype": 23, "idDevicemodel": 32}:
+            return DaisyRGBLight(**dev)
+        case {"idDevicetype": 24, "idDevicemodel": 27}:
+            return DaisySlatsCover(**dev)
+        case {"idDevicetype": 24, "idDevicemodel": 44}:
+            return DaisyRetractableSlatsCover(**dev)
+
         case _:
             return DaisyDevice(**dev)
 
