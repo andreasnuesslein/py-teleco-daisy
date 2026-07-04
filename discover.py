@@ -1,24 +1,25 @@
+import asyncio
 import sys
 
+import aiohttp
 from pydantic import ValidationError
 
 from teleco_daisy import TelecoDaisy
 
 
-def discover(user, passwd):
-    client = TelecoDaisy(user, passwd)
-    client.login()
+async def discover(user, passwd, session):
+    client = TelecoDaisy(user, passwd, session)
+    await client.login()
 
     # different daisy boxes
-    installations = client.get_account_installation_list()
+    installations = await client.get_account_installation_list()
     for installation in installations:
         print("# INSTALLATION")
         print(installation)
-        print(client.get_installation_is_active(installation))
+        print(await client.get_installation_is_active(installation))
 
         print("\n## ROOM CONFIGURATIONS")
-        rooms = client.get_room_configuration_list(installation)
-        for room in rooms:
+        for room in await client.get_room_configuration_list(installation):
             print(room)
             print("\n### DEVICE COMMANDS")
             for device in room.deviceList:
@@ -29,7 +30,7 @@ def discover(user, passwd):
 
         print("\n## ROOM LIST")
         try:
-            rooms = client.get_room_list(installation)
+            rooms = await client.get_room_list(installation)
         except ValidationError as e:
             print("\n\n")
             print(e)
@@ -42,7 +43,7 @@ def discover(user, passwd):
             print("\n### DEVICE STATI")
             for device in room.deviceList:
                 print(device)
-                for status in device.update_state():
+                for status in await device.update_state():
                     print(f"  {status.model_dump()}")
 
 
@@ -51,4 +52,8 @@ if __name__ == "__main__":
         print("Usage: python discover.py <email> <password>")
         sys.exit(1)
 
-    discover(sys.argv[1], sys.argv[2])
+    async def discover_wrap(user, password):
+        async with aiohttp.ClientSession() as session:
+            await discover(user, password, session)
+
+    asyncio.run(discover_wrap(sys.argv[1], sys.argv[2]))

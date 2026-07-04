@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2",
-    "requests>=2.28",
+    "aiohttp>=3",
 ]
 
 [dependency-groups]
